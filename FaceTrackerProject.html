@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simple Pose Tracker</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { 
+      margin:0; 
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+      background: linear-gradient(135deg, #1a1a2e, #16213e); 
+      color:#fff; 
+      display:flex; 
+      flex-direction:column; 
+      min-height:100vh;
+    }
+    
+    .header {
+      background: rgba(0,0,0,0.3);
+      padding: 16px;
+      text-align: center;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+      background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    .main-container {
+      display: flex;
+      flex: 1;
+      gap: 20px;
+      padding: 20px;
+      max-width: 1400px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    
+    .tracking-panel {
+      flex: 1;
+      background: rgba(0,0,0,0.4);
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .pose-panel {
+      flex: 1;
+      background: rgba(0,0,0,0.4);
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid rgba(255,255,255,0.1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    #container { 
+      position:relative; 
+      width: 100%; 
+      max-width: 640px;
+      margin: 0 auto;
+    }
+    
+    video, canvas { 
+      width:100%; 
+      height:auto; 
+      border-radius:8px; 
+      display:block; 
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    
+    canvas { 
+      position:absolute; 
+      left:0; 
+      top:0; 
+      pointer-events:none; 
+    }
+    
+    .controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    
+    button { 
+      padding: 12px 24px; 
+      border-radius: 8px; 
+      border: none; 
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      color: white; 
+      cursor: pointer; 
+      font-weight: 600;
+      font-size: 14px;
+      transition: all 0.2s ease;
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .pose-display {
+      width: 100%;
+      max-width: 400px;
+      aspect-ratio: 1;
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px dashed rgba(255,255,255,0.2);
+      transition: all 0.3s ease;
+    }
+    
+    .pose-display.active {
+      border-color: #4ecdc4;
+      background: rgba(78, 205, 196, 0.1);
+    }
+    
+    .pose-display img {
+      max-width: 90%;
+      max-height: 90%;
+      object-fit: contain;
+      border-radius: 8px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    
+    .pose-display.active img {
+      opacity: 1;
+    }
+    
+    .pose-info {
+      margin-top: 20px;
+      text-align: center;
+    }
+    
+    .pose-name {
+      font-size: 18px;
+      font-weight: 600;
+      color: #4ecdc4;
+      margin-bottom: 8px;
+    }
+    
+    .pose-instruction {
+      font-size: 14px;
+      color: #b0b0b0;
+      line-height: 1.4;
+    }
+    
+    .detection-status {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.7);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #4ecdc4;
+    }
+    
+    .image-upload {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    
+    .upload-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .upload-group label {
+      font-size: 14px;
+      color: #b0b0b0;
+      min-width: 120px;
+    }
+    
+    .upload-group input[type="file"] {
+      color: #fff;
+      font-size: 12px;
+    }
+    
+    @media (max-width: 768px) {
+      .main-container {
+        flex-direction: column;
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Simple Pose Tracker</h1>
+  </div>
+  
+  <div class="main-container">
+    <div class="tracking-panel">
+      <div class="controls">
+        <button id="startBtn">Start Tracking</button>
+        <button id="stopBtn" disabled>Stop</button>
+        <div class="detection-status" id="status">Ready</div>
+      </div>
+      
+      <div id="container">
+        <video id="video" playsinline></video>
+        <canvas id="overlay"></canvas>
+      </div>
+      
+      <div class="image-upload">
+        <div class="upload-group">
+          <label>Angry:</label>
+          <input type="file" id="imgAngry" accept="image/*">
+        </div>
+        <div class="upload-group">
+          <label>Eureka!:</label>
+          <input type="file" id="imgEureka" accept="image/*">
+        </div>
+        <div class="upload-group">
+          <label>Surprise:</label>
+          <input type="file" id="imgSurprise" accept="image/*">
+        </div>
+        <div class="upload-group">
+          <label>Crying:</label>
+          <input type="file" id="imgCrying" accept="image/*">
+        </div>
+      </div>
+    </div>
+    
+    <div class="pose-panel">
+      <div class="pose-display" id="poseDisplay">
+        <img id="poseImage" src="" alt="Current pose" style="display: none;">
+      </div>
+      <div class="pose-info">
+        <div class="pose-name" id="poseName">No pose detected</div>
+        <div class="pose-instruction" id="poseInstruction">Try: raise fist (angry), point up (eureka!), open mouth (surprise), or two fists (crying)!</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+
+  <script>
+  // --- Helpers --------------------------------------------------------------
+  const $ = (sel) => document.querySelector(sel);
+  const video = $('#video');
+  const canvas = $('#overlay');
+  const ctx = canvas.getContext('2d');
+  const container = $('#container');
+  const poseDisplay = $('#poseDisplay');
+  const poseImage = $('#poseImage');
+  const poseName = $('#poseName');
+  const poseInstruction = $('#poseInstruction');
+  const status = $('#status');
+  
+  let camera = null;
+  let faceMesh = null;
+  let hands = null;
+  let running = false;
+  let currentPose = null;
+  let poseStartTime = 0;
+
+  function resizeCanvasToVideo() {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.style.width = video.offsetWidth + 'px';
+    canvas.style.height = video.offsetHeight + 'px';
+  }
+
+  function normToPx(norm, w = canvas.width, h = canvas.height) {
+    return { x: norm.x * w, y: norm.y * h };
+  }
+
+  function distance(a, b) {
+    const dx = a.x - b.x, dy = a.y - b.y;
+    return Math.sqrt(dx*dx + dy*dy);
+  }
+
+  // --- Pose Management ----------------------------------------------------
+  const poses = {
+    angry: {
+      name: 'Angry',
+      instruction: 'Raise a fist in the air',
+      image: 'https://images.unsplash.com/photo-1531123414780-f0b0a4b1d8d6?w=600&q=60'
+    },
+    eureka: {
+      name: 'Eureka!',
+      instruction: 'Point your finger up like you had a great idea!',
+      image: 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=600&q=60'
+    },
+    surprise: {
+      name: 'Surprise',
+      instruction: 'Open your mouth wide in surprise!',
+      image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=600&q=60'
+    },
+    crying: {
+      name: 'Crying',
+      instruction: 'Show two fists',
+      image: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=600&q=60'
+    }
+  };
+
+  function showPose(poseKey) {
+    if (currentPose === poseKey) return; // Already showing this pose
+    
+    currentPose = poseKey;
+    poseStartTime = performance.now();
+    
+    const pose = poses[poseKey];
+    poseImage.src = pose.image;
+    poseImage.style.display = 'block';
+    poseDisplay.classList.add('active');
+    poseName.textContent = pose.name;
+    poseInstruction.textContent = pose.instruction;
+    status.textContent = `Detected: ${pose.name}`;
+    
+    // Play sound effect
+    playSound(poseKey);
+  }
+  
+  function playSound(poseKey) {
+    // Create audio context for sound effects
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    // Different sounds for different poses
+    let frequency, duration;
+    switch(poseKey) {
+      case 'angry':
+        frequency = 150; // Low, grumpy sound
+        duration = 0.3;
+        break;
+      case 'eureka':
+        frequency = 800; // High, excited sound
+        duration = 0.5;
+        break;
+      case 'surprise':
+        frequency = 400; // Medium, surprised sound
+        duration = 0.4;
+        break;
+      case 'crying':
+        frequency = 200; // Low, sad sound
+        duration = 0.6;
+        break;
+      default:
+        frequency = 300;
+        duration = 0.2;
+    }
+    
+    oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + duration);
+  }
+
+  function hidePose() {
+    if (!currentPose) return;
+    
+    currentPose = null;
+    poseImage.style.display = 'none';
+    poseDisplay.classList.remove('active');
+    poseName.textContent = 'No pose detected';
+    poseInstruction.textContent = 'Make a gesture to see your Clash Royale pose!';
+    status.textContent = 'Tracking...';
+  }
+
+  // --- Simple Pose Detection Logic ----------------------------------------
+  function detectPose(faceResults, handResults) {
+    let detectedPose = null;
+    
+    // Face detection for surprise (simple mouth opening)
+    if (faceResults && faceResults.multiFaceLandmarks && faceResults.multiFaceLandmarks.length > 0) {
+      const landmarks = faceResults.multiFaceLandmarks[0];
+      const annotations = faceResults.multiFaceLandmarks[0].annotations || {};
+      
+      // Get mouth landmarks - try multiple annotation types
+      let upperLip = annotations.lipsUpperOuter || annotations.lipsUpperInner || [];
+      let lowerLip = annotations.lipsLowerOuter || annotations.lipsLowerInner || [];
+      
+      // If no annotations, use direct landmark indices for mouth
+      if (upperLip.length === 0 || lowerLip.length === 0) {
+        // MediaPipe face mesh mouth landmarks (approximate indices)
+        const mouthIndices = [61, 84, 17, 314, 405, 320, 307, 375, 321, 308, 324, 318];
+        upperLip = mouthIndices.slice(0, 6).map(i => landmarks[i]).filter(Boolean);
+        lowerLip = mouthIndices.slice(6, 12).map(i => landmarks[i]).filter(Boolean);
+      }
+      
+      if (upperLip.length > 0 && lowerLip.length > 0) {
+        // Calculate mouth opening - much simpler approach
+        const upperY = upperLip.reduce((sum, p) => sum + p.y, 0) / upperLip.length;
+        const lowerY = lowerLip.reduce((sum, p) => sum + p.y, 0) / lowerLip.length;
+        const mouthOpen = Math.abs(upperY - lowerY);
+        
+        // Very simple threshold - just check if mouth is open enough
+        if (mouthOpen > 0.02) { // This is a very low threshold
+          detectedPose = 'surprise';
+        }
+      }
+    }
+    
+    // Hand detection for all hand-based poses
+    if (handResults && handResults.multiHandLandmarks) {
+      let handsOnScreen = 0;
+      let handsAboveFace = 0;
+      let pointingUpCount = 0;
+      
+      // Get face center for "above face" detection
+      let faceCenterY = 0.5; // Default to middle of screen
+      if (faceResults && faceResults.multiFaceLandmarks && faceResults.multiFaceLandmarks.length > 0) {
+        const faceLandmarks = faceResults.multiFaceLandmarks[0];
+        const nose = faceLandmarks[1]; // Nose tip
+        faceCenterY = nose.y;
+      }
+      
+      for (const landmarks of handResults.multiHandLandmarks) {
+        const wrist = landmarks[0];
+        const wristY = wrist.y;
+        
+        // Count hands on screen
+        handsOnScreen++;
+        
+        // Check if hand is above face
+        if (wristY < faceCenterY - 0.1) { // Above face with some margin
+          handsAboveFace++;
+        }
+        
+        // Check for pointing up - index finger extended and pointing up
+        const indexTip = landmarks[8];
+        const indexPip = landmarks[6];
+        const middleTip = landmarks[12];
+        const ringTip = landmarks[16];
+        const pinkyTip = landmarks[20];
+        
+        const indexUp = indexTip.y < indexPip.y;
+        const otherFingersDown = middleTip.y > landmarks[10].y && ringTip.y > landmarks[14].y && pinkyTip.y > landmarks[18].y;
+        const isPointingUp = indexUp && otherFingersDown;
+        
+        if (isPointingUp) pointingUpCount++;
+      }
+      
+      // Pose detection based on hand gestures
+      if (handsOnScreen >= 2) {
+        detectedPose = 'crying'; // Two hands on screen
+      } else if (handsAboveFace >= 1) {
+        detectedPose = 'angry'; // One hand above face
+      } else if (pointingUpCount >= 1) {
+        detectedPose = 'eureka'; // Pointing up
+      }
+    }
+    
+    return detectedPose;
+  }
+
+  function handleResultsFace(results) {
+    // Draw face landmarks as small dots
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+      const landmarks = results.multiFaceLandmarks[0];
+      
+      // Draw all landmarks as small dots
+      landmarks.forEach((landmark, index) => {
+        const x = landmark.x * canvas.width;
+        const y = landmark.y * canvas.height;
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 1.5, 0, 2 * Math.PI);
+        ctx.fillStyle = '#4ecdc4';
+        ctx.fill();
+      });
+      
+      // Highlight key areas with slightly larger dots
+      const annotations = results.multiFaceLandmarks[0].annotations || {};
+      
+      // Eyebrows - larger dots
+      if (annotations.leftEyebrowUpper) {
+        annotations.leftEyebrowUpper.forEach(landmark => {
+          const x = landmark.x * canvas.width;
+          const y = landmark.y * canvas.height;
+          ctx.beginPath();
+          ctx.arc(x, y, 2.5, 0, 2 * Math.PI);
+          ctx.fillStyle = '#ff6b6b';
+          ctx.fill();
+        });
+      }
+      
+      if (annotations.rightEyebrowUpper) {
+        annotations.rightEyebrowUpper.forEach(landmark => {
+          const x = landmark.x * canvas.width;
+          const y = landmark.y * canvas.height;
+          ctx.beginPath();
+          ctx.arc(x, y, 2.5, 0, 2 * Math.PI);
+          ctx.fillStyle = '#ff6b6b';
+          ctx.fill();
+        });
+      }
+      
+      // Mouth - larger dots
+      if (annotations.lipsUpperOuter) {
+        annotations.lipsUpperOuter.forEach(landmark => {
+          const x = landmark.x * canvas.width;
+          const y = landmark.y * canvas.height;
+          ctx.beginPath();
+          ctx.arc(x, y, 2.5, 0, 2 * Math.PI);
+          ctx.fillStyle = '#ff6b6b';
+          ctx.fill();
+        });
+      }
+      
+      if (annotations.lipsLowerOuter) {
+        annotations.lipsLowerOuter.forEach(landmark => {
+          const x = landmark.x * canvas.width;
+          const y = landmark.y * canvas.height;
+          ctx.beginPath();
+          ctx.arc(x, y, 2.5, 0, 2 * Math.PI);
+          ctx.fillStyle = '#ff6b6b';
+          ctx.fill();
+        });
+      }
+    }
+  }
+
+  function handleResultsHands(results) {
+    // Draw hands for debugging
+    if (results.multiHandLandmarks) {
+      for (const landmarks of results.multiHandLandmarks) {
+        window.drawConnectors && window.drawConnectors(ctx, landmarks, window.HAND_CONNECTIONS, {color:'#ff6b6b', lineWidth:2});
+        window.drawLandmarks && window.drawLandmarks(ctx, landmarks, {color:'#ff6b6b', lineWidth:1});
+      }
+    }
+  }
+
+  // Combine handlers: we draw face then hands on canvas each frame.
+  function onResultsCombined(faceResults, handResults) {
+    // Draw face and hand landmarks
+    if (faceResults) handleResultsFace(faceResults);
+    if (handResults) handleResultsHands(handResults);
+    
+    // Detect poses
+    const detectedPose = detectPose(faceResults, handResults);
+    
+    if (detectedPose && detectedPose !== currentPose) {
+      showPose(detectedPose);
+    } else if (!detectedPose && currentPose) {
+      hidePose();
+    }
+  }
+
+  // --- Setup MediaPipe instances and camera --------------------------------
+  async function start() {
+    if (running) return;
+    running = true;
+
+    // ensure video stream allowed
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width:1280, height:720 }, audio:false });
+    video.srcObject = stream;
+    await video.play();
+    resizeCanvasToVideo();
+
+    // FaceMesh (support multiple global shapes: FaceMesh.FaceMesh or FaceMesh)
+    const FaceMeshNS = window.FaceMesh || window.faceMesh || {};
+    const FaceMeshCtor = FaceMeshNS.FaceMesh || FaceMeshNS;
+    faceMesh = new FaceMeshCtor({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    });
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6
+    });
+
+    // Hands (support Hands.Hands or Hands)
+    const HandsNS = window.Hands || window.hands || {};
+    const HandsCtor = HandsNS.Hands || HandsNS;
+    hands = new HandsCtor({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6
+    });
+
+    // Keep last results in closure to composite draws
+    let lastFaceResults = null;
+    let lastHandResults = null;
+
+    faceMesh.onResults((results) => {
+      lastFaceResults = results;
+      // call the combined drawing function
+      onResultsCombined(lastFaceResults, lastHandResults);
+    });
+
+    hands.onResults((results) => {
+      lastHandResults = results;
+      onResultsCombined(lastFaceResults, lastHandResults);
+    });
+
+    // CameraUtils to continuously feed frames to both solutions
+    // Camera (support CameraUtils.Camera or global Camera)
+    const CameraNS = window.CameraUtils || {};
+    const CameraCtor = CameraNS.Camera || window.Camera;
+    const cameraFeed = new CameraCtor(video, {
+      onFrame: async () => {
+        if (!running) return;
+        await faceMesh.send({ image: video });
+        await hands.send({ image: video });
+      },
+      width: video.videoWidth || 1280,
+      height: video.videoHeight || 720
+    });
+    camera = cameraFeed;
+    camera.start();
+
+    $('#startBtn').disabled = true;
+    $('#stopBtn').disabled = false;
+  }
+
+  function stop() {
+    running = false;
+    if (camera) camera.stop();
+    // stop tracks
+    const s = video.srcObject;
+    if (s) {
+      s.getTracks().forEach(t => t.stop());
+      video.srcObject = null;
+    }
+    $('#startBtn').disabled = false;
+    $('#stopBtn').disabled = true;
+  }
+
+  // wire controls
+  $('#startBtn').addEventListener('click', () => start().catch(err => { console.error(err); alert('Error starting webcam: ' + err.message); }));
+  $('#stopBtn').addEventListener('click', stop);
+
+  // Allow choosing custom images for Clash Royale poses
+  function wireImagePicker(inputId, poseKey) {
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      const file = el.files && el.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      poses[poseKey].image = url;
+    });
+  }
+  wireImagePicker('imgAngry', 'angry');
+  wireImagePicker('imgEureka', 'eureka');
+  wireImagePicker('imgSurprise', 'surprise');
+  wireImagePicker('imgCrying', 'crying');
+
+  // resize canvas if window changes
+  window.addEventListener('resize', () => {
+    if (video && video.videoWidth) resizeCanvasToVideo();
+  });
+
+  </script>
+</body>
+</html>
