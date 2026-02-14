@@ -1,1 +1,1 @@
-https://hmac10.github.io/Parallax/FaceTrackerProject.html
+Try out the project yourself: https://hmac10.github.io/facial-tracking-project/FaceTrackerProject.html
